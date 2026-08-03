@@ -168,6 +168,35 @@ body {
   font-size: 0.9rem;
 }
 
+/* ---------- 饮食偏好 ---------- */
+.diet-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  background: var(--card);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  margin-bottom: 12px;
+}
+.diet-bar .label { font-size: 0.82rem; color: var(--muted); flex: 1; }
+.diet-chips { display: flex; gap: 6px; }
+.diet-chip {
+  border: 1.5px solid var(--ok);
+  background: #e3f5ea;
+  color: var(--ok);
+  border-radius: 16px;
+  padding: 6px 12px;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+.diet-chip.off {
+  border-color: #c9c2ba;
+  background: #f0ece7;
+  color: var(--muted);
+  text-decoration: line-through;
+}
+
 /* ---------- 人数选择 ---------- */
 .persons-bar {
   display: flex;

@@ -17,10 +17,11 @@ function load() {
         persons: s.persons >= 1 ? s.persons : 2,
         plan: s.plan && Array.isArray(s.plan.days) ? s.plan : null,
         customRecipes: Array.isArray(s.customRecipes) ? s.customRecipes : [],
+        diet: s.diet && typeof s.diet === 'object' ? s.diet : { chicken: true, pork: true, beef: true },
       };
     }
   } catch (e) { /* 数据损坏则重置 */ }
-  return { inventory: [], history: [], persons: 2, plan: null, customRecipes: [] };
+  return { inventory: [], history: [], persons: 2, plan: null, customRecipes: [], diet: { chicken: true, pork: true, beef: true } };
 }
 
 function save() {
@@ -45,6 +46,17 @@ function presetOf(key) {
 function allRecipes() {
   return RECIPES.concat(state.customRecipes || []);
 }
+
+/* 饮食偏好：某类荤菜是否允许（false = 不吃，推荐/菜单里排除） */
+function dietAllowed(category) {
+  return !state.diet || state.diet[category] !== false;
+}
+
+const DIET_OPTS = [
+  { id: 'chicken', zh: '鸡肉' },
+  { id: 'pork',    zh: '猪肉' },
+  { id: 'beef',    zh: '牛肉' },
+];
 
 function stockQty(key) {
   const item = state.inventory.find(i => i.key === key);
@@ -117,6 +129,7 @@ function recommend() {
 
   for (const recipe of allRecipes()) {
     if (cookedRecent.includes(recipe.id)) continue;
+    if (!dietAllowed(recipe.category)) continue; // 不吃的荤菜类别直接排除
 
     const missing = [];
     let oldestTs = 0;
@@ -322,6 +335,12 @@ function renderRecommend() {
         <button id="pInc">+</button>
       </div>
     </div>
+    <div class="diet-bar">
+      <span class="label">🥗 不吃的荤菜（点一下切换）</span>
+      <div class="diet-chips">
+        ${DIET_OPTS.map(o => `<button class="diet-chip ${dietAllowed(o.id) ? '' : 'off'}" data-diet="${o.id}">${o.zh}${dietAllowed(o.id) ? '' : ' ✕'}</button>`).join('')}
+      </div>
+    </div>
     <div class="section-title">今日推荐（最近7天做过的不会出现）</div>
     ${top.length
       ? top.map(item => dishCard(item)).join('')
@@ -340,6 +359,14 @@ function renderRecommend() {
   });
   document.getElementById('pInc').addEventListener('click', () => {
     if (state.persons < 8) { state.persons++; save(); renderRecommend(); }
+  });
+  view.querySelectorAll('.diet-chip').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = btn.dataset.diet;
+      state.diet[id] = !dietAllowed(id);
+      save();
+      renderRecommend();
+    });
   });
   view.querySelectorAll('.dish-card').forEach(el => {
     el.addEventListener('click', () => openRecipe(el.dataset.id));
@@ -448,16 +475,20 @@ async function copyText(text) {
 const IMG_FONT = '"Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif';
 
 function wrapLines(ctx, text, maxWidth) {
-  const words = String(text).split(' ');
   const lines = [];
   let cur = '';
-  for (const w of words) {
-    const trial = cur ? cur + ' ' + w : w;
-    if (ctx.measureText(trial).width <= maxWidth || !cur) {
-      cur = trial;
+  for (const w of String(text).split(' ')) {
+    if (ctx.measureText(w).width > maxWidth) {
+      // 单个"词"超宽（如无空格的中文）→ 按字符断行
+      if (cur) { lines.push(cur); cur = ''; }
+      for (const ch of w) {
+        if (ctx.measureText(cur + ch).width <= maxWidth || !cur) cur += ch;
+        else { lines.push(cur); cur = ch; }
+      }
     } else {
-      lines.push(cur);
-      cur = w;
+      const trial = cur ? cur + ' ' + w : w;
+      if (ctx.measureText(trial).width <= maxWidth || !cur) cur = trial;
+      else { lines.push(cur); cur = w; }
     }
   }
   if (cur) lines.push(cur);
@@ -497,7 +528,12 @@ function drawRecipeImage(r, persons) {
   meas.font = `28px ${IMG_FONT}`;
   for (const ing of r.ingredients) {
     const p = presetOf(ing.key);
-    ops.push({ t: 'text', x: PAD, y, text: `${p ? p.emoji : '📦'}  ${formatQtyId(ing.key, scaledQty(ing.qty, persons))}`, font: meas.font, color: '#33302c' });
+    const main = `${p ? p.emoji : '📦'}  ${formatQtyId(ing.key, scaledQty(ing.qty, persons))}`;
+    ops.push({ t: 'text', x: PAD, y, text: main, font: meas.font, color: '#33302c' });
+    if (p) {
+      const wMain = meas.measureText(main).width;
+      ops.push({ t: 'text', x: PAD + wMain + 14, y, text: p.nameZh, font: `22px ${IMG_FONT}`, color: '#8a837b' });
+    }
     y += 44;
   }
   meas.font = `22px ${IMG_FONT}`;
@@ -519,7 +555,16 @@ function drawRecipeImage(r, persons) {
     lines.forEach((line, li) => {
       ops.push({ t: 'text', x: PAD + 56, y: y + li * 40, text: line, font: meas.font, color: '#33302c' });
     });
-    y += lines.length * 40 + 18;
+    y += lines.length * 40;
+    if (s.textZh) {
+      meas.font = `22px ${IMG_FONT}`;
+      const zhLines = wrapLines(meas, s.textZh, TEXT_W - 56);
+      zhLines.forEach((line, li) => {
+        ops.push({ t: 'text', x: PAD + 56, y: y + li * 30, text: line, font: meas.font, color: '#8a837b' });
+      });
+      y += zhLines.length * 30;
+    }
+    y += 16;
   });
   y += 12;
 
@@ -527,10 +572,15 @@ function drawRecipeImage(r, persons) {
   if (r.tipId) {
     meas.font = `24px ${IMG_FONT}`;
     const tipLines = wrapLines(meas, `💡 ${r.tipId}`, TEXT_W - 32);
-    const tipH = tipLines.length * 34 + 30;
+    meas.font = `20px ${IMG_FONT}`;
+    const zhTipLines = r.tipZh ? wrapLines(meas, r.tipZh, TEXT_W - 32) : [];
+    const tipH = tipLines.length * 34 + zhTipLines.length * 28 + 30;
     ops.push({ t: 'rrect', x: PAD, y, w: TEXT_W, h: tipH, color: '#fbf0da', radius: 14 });
     tipLines.forEach((line, li) => {
-      ops.push({ t: 'text', x: PAD + 16, y: y + 40 + li * 34, text: line, font: meas.font, color: '#7a5a13' });
+      ops.push({ t: 'text', x: PAD + 16, y: y + 40 + li * 34, text: line, font: `24px ${IMG_FONT}`, color: '#7a5a13' });
+    });
+    zhTipLines.forEach((line, li) => {
+      ops.push({ t: 'text', x: PAD + 16, y: y + 40 + tipLines.length * 34 + li * 28, text: line, font: `20px ${IMG_FONT}`, color: '#b39b6b' });
     });
     y += tipH + 40;
   }
@@ -987,6 +1037,7 @@ function generatePlan() {
     for (const recipe of allRecipes()) {
       if (cookedRecent.includes(recipe.id)) continue;
       if (usedThisWeek.has(recipe.id)) continue;
+      if (!dietAllowed(recipe.category)) continue;
 
       let feasible = true;
       let oldestTs = 0;
