@@ -334,11 +334,12 @@ function renderInventory(askTranslateFor) {
       alert('家庭密码要 4~32 位字母/数字（如 zhang-jia-2026）\n每台手机填同一个密码，就能看到同一份数据');
       return;
     }
+    // 注意：不能先 save()——save 会把 updatedAt 刷成当前时间，
+    // 导致新设备的空数据被判为“最新”而覆盖云端（太太手机清空库存的 bug）
     state.sync = { family };
-    save(true);
     setSyncStatus('正在同步…');
-    await syncPull(); // 云端更新则拉过来
-    syncPush();       // 本地更新则推上去
+    await syncPull(); // 先拉：云端较新则先采用云端数据（新设备首次同步拿到库存）
+    save();           // 再存本地；若本地确实较新，防抖推送至云端
     renderInventory();
   });
 }
@@ -1197,6 +1198,14 @@ async function syncPull() {
     const res = await fetch(SYNC_URL + '?family=' + encodeURIComponent(state.sync.family));
     const remote = await res.json();
     if (remote && typeof remote === 'object' && (remote.updatedAt || 0) > (state.updatedAt || 0)) {
+      /* 防护：本机有库存而云端是全空（典型场景：新设备首次同步把空数据推了上去），
+         拒绝被覆盖，并用本机数据回推恢复云端 */
+      const remoteEmpty = !Array.isArray(remote.inventory) || remote.inventory.length === 0;
+      if (remoteEmpty && state.inventory.length > 0) {
+        setSyncStatus('⚠ 检测到云端数据被清空，已用本机数据自动恢复');
+        syncPush();
+        return;
+      }
       const family = state.sync.family;
       Object.assign(state, {
         inventory: Array.isArray(remote.inventory) ? remote.inventory : [],
