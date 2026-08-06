@@ -19,14 +19,18 @@ function load() {
         plan: s.plan && Array.isArray(s.plan.days) ? s.plan : null,
         customRecipes: Array.isArray(s.customRecipes) ? s.customRecipes : [],
         diet: s.diet && typeof s.diet === 'object' ? s.diet : { chicken: true, pork: true, beef: true },
+        sync: s.sync && typeof s.sync.family === 'string' ? s.sync : { family: '' },
+        updatedAt: s.updatedAt || 0,
       };
     }
   } catch (e) { /* 数据损坏则重置 */ }
-  return { inventory: [], history: [], persons: 2, plan: null, customRecipes: [], diet: { chicken: true, pork: true, beef: true } };
+  return { inventory: [], history: [], persons: 2, plan: null, customRecipes: [], diet: { chicken: true, pork: true, beef: true }, sync: { family: '' }, updatedAt: 0 };
 }
 
-function save() {
+function save(skipPush) {
+  state.updatedAt = Date.now();
   localStorage.setItem(STORE_KEY, JSON.stringify(state));
+  if (!skipPush) syncPush();
 }
 
 function todayStr() {
@@ -267,6 +271,14 @@ function renderInventory(askTranslateFor) {
       ${customArea}
     </div>
     <div class="always-have">默认常备：${ALWAYS_HAVE.map(a => a.nameZh).join('、')}（不用录入）</div>
+    <div class="card" style="margin-top:14px">
+      <div class="section-title" style="margin-top:0">☁️ 家庭云同步（多台手机共享库存）</div>
+      <div class="custom-add">
+        <input id="syncFamily" placeholder="家庭密码（如 zhang-jia-2026）" value="${escapeHtml((state.sync && state.sync.family) || '')}">
+        <button class="btn secondary" id="syncSaveBtn">保存并同步</button>
+      </div>
+      <div class="always-have" id="syncStatus">${syncEnabled() ? '已设置，打开 App 自动同步' : '未设置：每台手机数据各自独立'}</div>
+    </div>
   `;
 
   view.querySelectorAll('.preset-item').forEach(el => {
@@ -314,6 +326,21 @@ function renderInventory(askTranslateFor) {
       }
     });
   }
+
+  /* ---- 云同步设置 ---- */
+  document.getElementById('syncSaveBtn').addEventListener('click', async () => {
+    const family = document.getElementById('syncFamily').value.trim();
+    if (!/^[a-zA-Z0-9_-]{4,32}$/.test(family)) {
+      alert('家庭密码要 4~32 位字母/数字（如 zhang-jia-2026）\n每台手机填同一个密码，就能看到同一份数据');
+      return;
+    }
+    state.sync = { family };
+    save(true);
+    setSyncStatus('正在同步…');
+    await syncPull(); // 云端更新则拉过来
+    syncPush();       // 本地更新则推上去
+    renderInventory();
+  });
 }
 
 /* ---------- 推荐页 ---------- */
@@ -1147,6 +1174,80 @@ function renderPlan() {
   });
 }
 
+/* ================= 云端同步（Cloudflare Worker + KV） ================= */
+const SYNC_URL = 'https://smart-helper-sync.darkrekcus.workers.dev';
+
+function syncEnabled() {
+  return !!(SYNC_URL && state.sync && state.sync.family);
+}
+
+function setSyncStatus(text) {
+  const el = document.getElementById('syncStatus');
+  if (el) el.textContent = text;
+}
+
+function syncStatusText() {
+  return '✓ 已同步 ' + new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+}
+
+/* 拉取：云端更新则采用云端数据 */
+async function syncPull() {
+  if (!syncEnabled()) return;
+  try {
+    const res = await fetch(SYNC_URL + '?family=' + encodeURIComponent(state.sync.family));
+    const remote = await res.json();
+    if (remote && typeof remote === 'object' && (remote.updatedAt || 0) > (state.updatedAt || 0)) {
+      const family = state.sync.family;
+      Object.assign(state, {
+        inventory: Array.isArray(remote.inventory) ? remote.inventory : [],
+        history: Array.isArray(remote.history) ? remote.history : [],
+        persons: remote.persons >= 1 ? remote.persons : 2,
+        plan: remote.plan || null,
+        customRecipes: Array.isArray(remote.customRecipes) ? remote.customRecipes : [],
+        diet: remote.diet || { chicken: true, pork: true, beef: true },
+        updatedAt: remote.updatedAt,
+      });
+      state.sync = { family };
+      save(true);
+      render();
+    }
+    setSyncStatus(syncStatusText());
+  } catch (e) {
+    setSyncStatus('⚠ 同步失败，稍后会自动重试');
+  }
+}
+
+/* 推送：任何数据变动后 1.5 秒防抖上传 */
+let pushTimer = null;
+function syncPush() {
+  if (!syncEnabled()) return;
+  clearTimeout(pushTimer);
+  pushTimer = setTimeout(async () => {
+    try {
+      await fetch(SYNC_URL + '?family=' + encodeURIComponent(state.sync.family), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          inventory: state.inventory,
+          history: state.history,
+          persons: state.persons,
+          plan: state.plan,
+          customRecipes: state.customRecipes,
+          diet: state.diet,
+          updatedAt: state.updatedAt,
+        }),
+      });
+      setSyncStatus(syncStatusText());
+    } catch (e) {
+      setSyncStatus('⚠ 同步失败，稍后会自动重试');
+    }
+  }, 1500);
+}
+
 /* ================= 启动 ================= */
 document.querySelector('.tab[data-tab="inventory"]').classList.add('active');
 render();
+syncPull(); // 打开时拉一次云端
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) syncPull(); // 切回 App 时再拉一次
+});
