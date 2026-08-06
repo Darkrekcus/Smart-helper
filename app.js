@@ -12,7 +12,8 @@ function load() {
     if (raw) {
       const s = JSON.parse(raw);
       return {
-        inventory: Array.isArray(s.inventory) ? s.inventory : [],
+        // 葱姜蒜已改为调料，自动清掉旧的库存记录
+        inventory: (Array.isArray(s.inventory) ? s.inventory : []).filter(i => !['garlic', 'ginger', 'scallion'].includes(i.key)),
         history: Array.isArray(s.history) ? s.history : [],
         persons: s.persons >= 1 ? s.persons : 2,
         plan: s.plan && Array.isArray(s.plan.days) ? s.plan : null,
@@ -45,6 +46,13 @@ function presetOf(key) {
 /* 内置菜谱 + 用户自定义菜谱 */
 function allRecipes() {
   return RECIPES.concat(state.customRecipes || []);
+}
+
+/* 葱姜蒜：辅料不卡推荐（默认家里常有或顺手能买），只在使用时扣减 */
+const SOFT_INGREDIENTS = ['garlic', 'ginger', 'scallion'];
+
+function isSoft(key) {
+  return SOFT_INGREDIENTS.includes(key);
 }
 
 /* 饮食偏好：某类荤菜是否允许（false = 不吃，推荐/菜单里排除） */
@@ -134,6 +142,7 @@ function recommend() {
     const missing = [];
     let oldestTs = 0;
     for (const ing of recipe.ingredients) {
+      if (isSoft(ing.key)) continue; // 葱姜蒜不作为可行性门槛
       const need = scaledQty(ing.qty, state.persons);
       const have = stockQty(ing.key);
       if (have < need) {
@@ -206,7 +215,7 @@ function render() {
 
 /* ---------- 食材页 ---------- */
 function renderInventory(askTranslateFor) {
-  const grid = INGREDIENT_PRESETS.map(p => {
+  const grid = INGREDIENT_PRESETS.filter(p => !p.seasoning).map(p => {
     const qty = stockQty(p.key);
     return `<div class="preset-item" data-key="${p.key}">
       <span class="emoji">${p.emoji}</span>
@@ -1020,28 +1029,29 @@ function fmtPlanDate(d, index) {
   return '周' + WEEKDAYS_ZH[d.getDay()] + ' ' + md;
 }
 
-/* 生成7天菜单：模拟逐日扣库存，保证整周可行且不重样 */
+/* 生成7天菜单：每天2~3道（必有鱼虾 + 优先一汤），全周不重样，模拟逐日扣库存保证整周可行 */
 function generatePlan() {
   const vStock = {};
   for (const item of state.inventory) vStock[item.key] = item.qty;
 
   const cookedRecent = recentCookedIds(7);
   const usedThisWeek = new Set();
-  let prevCat = yesterdayCategory();
+  let prevCats = yesterdayCategory() ? [yesterdayCategory()] : [];
   const days = [];
 
-  for (let i = 0; i < 7; i++) {
+  const pickBest = (filterFn) => {
     let best = null;
     let bestScore = -Infinity;
-
     for (const recipe of allRecipes()) {
       if (cookedRecent.includes(recipe.id)) continue;
       if (usedThisWeek.has(recipe.id)) continue;
       if (!dietAllowed(recipe.category)) continue;
+      if (!filterFn(recipe)) continue;
 
       let feasible = true;
       let oldestTs = 0;
       for (const ing of recipe.ingredients) {
+        if (isSoft(ing.key)) continue; // 葱姜蒜不作为可行性门槛
         const need = scaledQty(ing.qty, state.persons);
         if ((vStock[ing.key] || 0) < need) { feasible = false; break; }
         const item = state.inventory.find(x => x.key === ing.key);
@@ -1051,23 +1061,40 @@ function generatePlan() {
 
       let score = 0;
       if (oldestTs > 0) score += Math.min(500, (Date.now() - oldestTs) / 3600000);
-      if (prevCat && recipe.category === prevCat) score -= 150;
+      if (prevCats.includes(recipe.category)) score -= 150;
       score -= recipe.difficulty * 10;
       score -= recipe.timeMin;
 
       if (score > bestScore) { bestScore = score; best = recipe; }
     }
+    return best;
+  };
 
-    if (best) {
-      usedThisWeek.add(best.id);
-      prevCat = best.category;
-      for (const ing of best.ingredients) {
-        vStock[ing.key] = (vStock[ing.key] || 0) - scaledQty(ing.qty, state.persons);
-      }
-      days.push({ date: fmtPlanDate(datePlus(i), i), recipeId: best.id });
-    } else {
-      days.push({ date: fmtPlanDate(datePlus(i), i), recipeId: null });
+  const take = (recipe) => {
+    usedThisWeek.add(recipe.id);
+    for (const ing of recipe.ingredients) {
+      const need = scaledQty(ing.qty, state.persons);
+      vStock[ing.key] = isSoft(ing.key)
+        ? Math.max(0, (vStock[ing.key] || 0) - need) // 辅料扣到0为止
+        : (vStock[ing.key] || 0) - need;
     }
+  };
+
+  for (let i = 0; i < 7; i++) {
+    const meal = [];
+    // 第1道：必须有鱼或虾（库存允许时）
+    const seafood = pickBest(r => r.category === 'fish' || r.category === 'shrimp');
+    if (seafood) { meal.push(seafood); take(seafood); }
+    // 第2道：非汤类，且不与当天已选同类别
+    const second = pickBest(r => r.category !== 'soup' && !meal.some(m => m.category === r.category));
+    if (second) { meal.push(second); take(second); }
+    // 第3道：优先汤；汤做不了则换任意不同类别的菜
+    let third = pickBest(r => r.category === 'soup');
+    if (!third) third = pickBest(r => !meal.some(m => m.category === r.category));
+    if (third) { meal.push(third); take(third); }
+
+    prevCats = meal.map(m => m.category);
+    days.push({ date: fmtPlanDate(datePlus(i), i), recipeIds: meal.map(m => m.id) });
   }
 
   state.plan = { persons: state.persons, generatedAt: Date.now(), days };
@@ -1076,34 +1103,39 @@ function generatePlan() {
 
 function renderPlan() {
   const plan = state.plan;
+  // 旧格式（每天一道）直接提示重新生成
+  const valid = plan && plan.days.every(d => Array.isArray(d.recipeIds));
 
-  const rows = plan ? plan.days.map(day => {
-    if (!day.recipeId) {
-      return `<div class="dish-card" style="cursor:default;opacity:.65">
-        <span class="emoji">🛒</span>
+  const dayHtml = (day) => {
+    if (!day.recipeIds.length) {
+      return `<div class="plan-day"><div class="plan-date">${day.date}</div>
+        <div class="dish-card" style="cursor:default;opacity:.65">
+          <span class="emoji">🛒</span>
+          <div class="info"><div class="zh">食材不够了，需要采购</div></div>
+        </div></div>`;
+    }
+    const dishes = day.recipeIds.map(id => {
+      const r = allRecipes().find(x => x.id === id);
+      if (!r) return '';
+      const tag = r.category === 'soup' ? '汤' : (r.category === 'fish' || r.category === 'shrimp') ? '海鲜' : '';
+      return `<div class="dish-card" data-id="${r.id}" style="margin-bottom:6px">
+        <span class="emoji">${r.emoji}</span>
         <div class="info">
-          <div class="zh">${day.date}</div>
-          <div class="id">食材不够了，需要采购</div>
+          <div class="zh">${escapeHtml(r.nameZh)}${tag ? ` <span class="tag ok">${tag}</span>` : ''}</div>
+          <div class="id">${escapeHtml(r.nameId)} · ⏱ ${r.timeMin} 分钟</div>
         </div>
       </div>`;
-    }
-    const r = allRecipes().find(x => x.id === day.recipeId);
-    if (!r) return '';
-    return `<div class="dish-card" data-id="${r.id}">
-      <span class="emoji">${r.emoji}</span>
-      <div class="info">
-        <div class="zh">${day.date} · ${r.nameZh}</div>
-        <div class="id">${r.nameId}</div>
-        <div class="meta">⏱ ${r.timeMin} 分钟</div>
-      </div>
-    </div>`;
-  }).join('') : '';
+    }).join('');
+    return `<div class="plan-day"><div class="plan-date">${day.date}</div>${dishes}</div>`;
+  };
 
   view.innerHTML = `
-    <button class="btn block" id="genPlanBtn">${plan ? '🔄 重新生成（按最新库存和人数）' : '📅 生成本周菜单'}</button>
-    ${plan && plan.persons !== state.persons
+    <button class="btn block" id="genPlanBtn">${valid ? '🔄 重新生成（按最新库存和人数）' : '📅 生成本周菜单'}</button>
+    ${valid && plan.persons !== state.persons
       ? `<div class="tip-box" style="margin-top:12px">⚠ 菜单是按 ${plan.persons} 人生成的，现在人数是 ${state.persons} 人，建议重新生成</div>` : ''}
-    ${plan ? `<div class="section-title">7 天不重样（已避开最近7天做过的菜）</div>${rows}` : '<div class="empty-tip">点上方按钮，基于当前库存和人数<br>生成 7 天不重样的午餐菜单</div>'}
+    ${valid
+      ? `<div class="section-title">每天 2~3 道：必有鱼虾 · 优先配汤 · 全周不重样</div>` + plan.days.map(dayHtml).join('')
+      : '<div class="empty-tip">点上方按钮，基于当前库存和人数<br>生成 7 天菜单（每天 2~3 道，必有鱼虾）</div>'}
   `;
 
   document.getElementById('genPlanBtn').addEventListener('click', () => {

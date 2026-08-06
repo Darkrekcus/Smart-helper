@@ -40,9 +40,9 @@ const INGREDIENT_PRESETS = [
   { key: 'pumpkin',     emoji: '🎃', nameZh: '南瓜',   nameId: 'labu',           unitId: 'potong'  },
   { key: 'winter_melon',emoji: '🍈', nameZh: '冬瓜',   nameId: 'bligo',          unitId: 'potong'  },
   { key: 'onion',       emoji: '🧅', nameZh: '洋葱',   nameId: 'bawang bombay',  unitId: 'buah'    },
-  { key: 'garlic',      emoji: '🧄', nameZh: '大蒜',   nameId: 'bawang putih',   unitId: 'siung'   },
-  { key: 'ginger',      emoji: '🫚', nameZh: '姜',     nameId: 'jahe',           unitId: 'ruas'    },
-  { key: 'scallion',    emoji: '🌿', nameZh: '葱',     nameId: 'daun bawang',    unitId: 'batang'  },
+  { key: 'garlic',      emoji: '🧄', nameZh: '大蒜',   nameId: 'bawang putih',   unitId: 'siung',   seasoning: true },
+  { key: 'ginger',      emoji: '🫚', nameZh: '姜',     nameId: 'jahe',           unitId: 'ruas',    seasoning: true },
+  { key: 'scallion',    emoji: '🌿', nameZh: '葱',     nameId: 'daun bawang',    unitId: 'batang',  seasoning: true },
   { key: 'chili',       emoji: '🌶️', nameZh: '辣椒',   nameId: 'cabai',          unitId: 'buah'    },
   { key: 'peanut',      emoji: '🥜', nameZh: '花生',   nameId: 'kacang tanah',   unitId: 'genggam' },
   { key: 'chives',      emoji: '🌱', nameZh: '韭菜',   nameId: 'kucai',          unitId: 'ikat'    },
@@ -71,6 +71,9 @@ const ALWAYS_HAVE = [
   { nameZh: '醋',     nameId: 'cuka' },
   { nameZh: '淀粉',   nameId: 'tepung maizena' },
   { nameZh: '胡椒',   nameId: 'merica' },
+  { nameZh: '大蒜',   nameId: 'bawang putih' },
+  { nameZh: '姜',     nameId: 'jahe' },
+  { nameZh: '葱',     nameId: 'daun bawang' },
 ];
 
 /* ---------- 数量缩放：基准2人份，N人时向上取整、至少为1 ---------- */
