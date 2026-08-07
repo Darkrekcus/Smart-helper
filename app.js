@@ -11,20 +11,29 @@ function load() {
     const raw = localStorage.getItem(STORE_KEY);
     if (raw) {
       const s = JSON.parse(raw);
+      // 葱姜蒜已改为调料，自动清掉旧的库存记录
+      const inventory = (Array.isArray(s.inventory) ? s.inventory : []).filter(i => !['garlic', 'ginger', 'scallion'].includes(i.key));
+      const customIngs = Array.isArray(s.customIngs) ? s.customIngs : [];
+      // 迁移：库存里已有的自定义食材，补进快捷图标列表
+      for (const it of inventory) {
+        if (typeof it.key === 'string' && it.key.startsWith('custom:') && !customIngs.find(c => c.key === it.key)) {
+          customIngs.push({ key: it.key, customName: it.customName || it.key.slice(7), nameId: it.nameId || null });
+        }
+      }
       return {
-        // 葱姜蒜已改为调料，自动清掉旧的库存记录
-        inventory: (Array.isArray(s.inventory) ? s.inventory : []).filter(i => !['garlic', 'ginger', 'scallion'].includes(i.key)),
+        inventory,
         history: Array.isArray(s.history) ? s.history : [],
         persons: s.persons >= 1 ? s.persons : 2,
         plan: s.plan && Array.isArray(s.plan.days) ? s.plan : null,
         customRecipes: Array.isArray(s.customRecipes) ? s.customRecipes : [],
+        customIngs,
         diet: s.diet && typeof s.diet === 'object' ? s.diet : { chicken: true, pork: true, beef: true },
         sync: s.sync && typeof s.sync.family === 'string' ? s.sync : { family: '' },
         updatedAt: s.updatedAt || 0,
       };
     }
   } catch (e) { /* 数据损坏则重置 */ }
-  return { inventory: [], history: [], persons: 2, plan: null, customRecipes: [], diet: { chicken: true, pork: true, beef: true }, sync: { family: '' }, updatedAt: 0 };
+  return { inventory: [], history: [], persons: 2, plan: null, customRecipes: [], customIngs: [], diet: { chicken: true, pork: true, beef: true }, sync: { family: '' }, updatedAt: 0 };
 }
 
 function save(skipPush) {
@@ -87,6 +96,15 @@ function addStock(key, customName, nameId) {
     if (nameId && !existing.nameId) existing.nameId = nameId;
   } else {
     state.inventory.push({ key, qty: 1, addedAt: Date.now(), customName: customName || null, nameId: nameId || null });
+  }
+  // 自定义食材记入快捷图标列表（下次直接点图标 +1）
+  if (key.startsWith('custom:')) {
+    const c = state.customIngs.find(x => x.key === key);
+    if (!c) {
+      state.customIngs.push({ key, customName: customName || key.slice(7), nameId: nameId || null });
+    } else if (nameId && !c.nameId) {
+      c.nameId = nameId;
+    }
   }
   save();
 }
@@ -227,6 +245,15 @@ function renderInventory(askTranslateFor) {
       <span class="id">${p.nameId}</span>
       ${qty > 0 ? `<span class="badge">×${qty}</span>` : ''}
     </div>`;
+  }).join('') + (state.customIngs || []).map(c => {
+    const qty = stockQty(c.key);
+    return `<div class="preset-item custom" data-key="${c.key}">
+      <span class="del-custom" data-del="${c.key}" title="删除这个食材">×</span>
+      <span class="emoji">📦</span>
+      <span class="zh">${escapeHtml(c.customName)}</span>
+      <span class="id">${escapeHtml(c.nameId || '')}</span>
+      ${qty > 0 ? `<span class="badge">×${qty}</span>` : ''}
+    </div>`;
   }).join('');
 
   const rows = state.inventory.map(item => {
@@ -282,7 +309,28 @@ function renderInventory(askTranslateFor) {
   `;
 
   view.querySelectorAll('.preset-item').forEach(el => {
-    el.addEventListener('click', () => { addStock(el.dataset.key); renderInventory(); });
+    el.addEventListener('click', (e) => {
+      if (e.target.classList.contains('del-custom')) return; // 点的是删除角标
+      const key = el.dataset.key;
+      const c = (state.customIngs || []).find(x => x.key === key);
+      if (c) addStock(key, c.customName, c.nameId);
+      else addStock(key);
+      renderInventory();
+    });
+  });
+  /* 自定义食材图标的删除角标：连图标带库存一起删 */
+  view.querySelectorAll('.del-custom').forEach(el => {
+    el.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const key = el.dataset.del;
+      const c = (state.customIngs || []).find(x => x.key === key);
+      if (confirm(`把「${c ? c.customName : key}」从快捷图标里删除？（库存里的也会一起删）`)) {
+        state.customIngs = state.customIngs.filter(x => x.key !== key);
+        state.inventory = state.inventory.filter(i => i.key !== key);
+        save();
+        renderInventory();
+      }
+    });
   });
   view.querySelectorAll('.stepper button').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -1213,6 +1261,7 @@ async function syncPull() {
         persons: remote.persons >= 1 ? remote.persons : 2,
         plan: remote.plan || null,
         customRecipes: Array.isArray(remote.customRecipes) ? remote.customRecipes : [],
+        customIngs: Array.isArray(remote.customIngs) ? remote.customIngs : [],
         diet: remote.diet || { chicken: true, pork: true, beef: true },
         updatedAt: remote.updatedAt,
       });
@@ -1242,6 +1291,7 @@ function syncPush() {
           persons: state.persons,
           plan: state.plan,
           customRecipes: state.customRecipes,
+          customIngs: state.customIngs,
           diet: state.diet,
           updatedAt: state.updatedAt,
         }),

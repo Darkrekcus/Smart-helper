@@ -118,6 +118,16 @@ body {
   user-select: none;
 }
 .preset-item:active { transform: scale(0.96); }
+.preset-item.custom { position: relative; border-style: dashed; }
+.preset-item .del-custom {
+  position: absolute;
+  top: 2px;
+  right: 6px;
+  color: #b0a89e;
+  font-size: 0.9rem;
+  line-height: 1;
+  padding: 2px;
+}
 .preset-item .emoji { font-size: 1.5rem; display: block; }
 .preset-item .zh { font-size: 0.78rem; display: block; margin-top: 2px; }
 .preset-item .id { font-size: 0.66rem; color: var(--muted); display: block; }
@@ -237,6 +247,15 @@ body {
 .tag.warn { background: #fbf0da; color: var(--warn); }
 
 .empty-tip { text-align: center; color: var(--muted); padding: 30px 10px; font-size: 0.9rem; }
+
+/* ---------- 周菜单 ---------- */
+.plan-day { margin-bottom: 16px; }
+.plan-date {
+  font-weight: 600;
+  font-size: 0.95rem;
+  margin: 4px 2px 8px;
+  color: var(--brand-dark);
+}
 
 /* ---------- 菜谱覆盖层 ---------- */
 .overlay {
