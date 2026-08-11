@@ -20,13 +20,15 @@ function load() {
           customIngs.push({ key: it.key, customName: it.customName || it.key.slice(7), nameId: it.nameId || null });
         }
       }
+      // 迁移：能对上预设/别名的自定义食材，升级成预设 key
+      const mig = migrateCustoms(inventory, customIngs);
       return {
-        inventory,
+        inventory: mig.inv,
         history: Array.isArray(s.history) ? s.history : [],
         persons: s.persons >= 1 ? s.persons : 2,
         plan: s.plan && Array.isArray(s.plan.days) ? s.plan : null,
         customRecipes: Array.isArray(s.customRecipes) ? s.customRecipes : [],
-        customIngs,
+        customIngs: mig.customs,
         diet: s.diet && typeof s.diet === 'object' ? s.diet : { chicken: true, pork: true, beef: true },
         sync: s.sync && typeof s.sync.family === 'string' ? s.sync : { family: '' },
         updatedAt: s.updatedAt || 0,
@@ -34,6 +36,25 @@ function load() {
     }
   } catch (e) { /* 数据损坏则重置 */ }
   return { inventory: [], history: [], persons: 2, plan: null, customRecipes: [], customIngs: [], diet: { chicken: true, pork: true, beef: true }, sync: { family: '' }, updatedAt: 0 };
+}
+
+/* 自定义食材升级：能对上预设/别名的 custom: 项改成预设 key（享受专属图标和菜谱推荐） */
+function migrateCustoms(inventory, customIngs) {
+  const inv = [];
+  for (const it of inventory) {
+    if (typeof it.key === 'string' && it.key.startsWith('custom:')) {
+      const pk = presetKeyForZh(it.customName || it.key.slice(7));
+      if (pk) {
+        const exist = inv.find(x => x.key === pk);
+        if (exist) { exist.qty += it.qty; continue; } // 已有同种预设，合并数量
+        inv.push({ ...it, key: pk, customName: null, nameId: null });
+        continue;
+      }
+    }
+    inv.push(it);
+  }
+  const customs = (customIngs || []).filter(c => !presetKeyForZh(c.customName || c.key.slice(7)));
+  return { inv, customs };
 }
 
 function save(skipPush) {
@@ -126,8 +147,8 @@ function removeStock(key) {
 
 /* 自定义食材：输入中文 → 返回 {presetKey} 或 {nameId, unitId} 或 null（不认识） */
 function lookupCustom(zhName) {
-  const preset = INGREDIENT_PRESETS.find(p => p.nameZh === zhName);
-  if (preset) return { presetKey: preset.key };
+  const pk = presetKeyForZh(zhName); // 预设正式名 + 别名（蒜台/羊角豆/豆芽菜等）
+  if (pk) return { presetKey: pk };
   if (ZH_TO_ID[zhName]) return ZH_TO_ID[zhName];
   return null;
 }
@@ -249,7 +270,7 @@ function renderInventory(askTranslateFor) {
     const qty = stockQty(c.key);
     return `<div class="preset-item custom" data-key="${c.key}">
       <span class="del-custom" data-del="${c.key}" title="删除这个食材">×</span>
-      <span class="emoji">📦</span>
+      <span class="emoji">${customEmoji(c.customName)}</span>
       <span class="zh">${escapeHtml(c.customName)}</span>
       <span class="id">${escapeHtml(c.nameId || '')}</span>
       ${qty > 0 ? `<span class="badge">×${qty}</span>` : ''}
@@ -258,7 +279,7 @@ function renderInventory(askTranslateFor) {
 
   const rows = state.inventory.map(item => {
     const p = presetOf(item.key);
-    const emoji = p ? p.emoji : '📦';
+    const emoji = p ? p.emoji : customEmoji(item.customName || item.key);
     const zh = p ? p.nameZh : (item.customName || item.key);
     const id = p ? p.nameId : (item.nameId || '');
     return `<div class="stock-row">
@@ -471,7 +492,7 @@ function openRecipe(recipeId) {
   }).join('');
 
   const steps = r.steps.map((s, i) =>
-    `<li><span class="num">${i + 1}</span><span>${s.emoji} ${renderStepId(r, s, persons)}${s.textZh ? `<div class="step-zh">${s.textZh}</div>` : ''}</span></li>`
+    `<li><span class="num">${i + 1}</span><span>${s.emoji} ${renderStepId(r, s, persons)}${s.textZh ? `<div class="step-zh">${renderStepZh(r, s, persons)}</div>` : ''}</span></li>`
   ).join('');
 
   overlay.innerHTML = `
@@ -643,7 +664,7 @@ function drawRecipeImage(r, persons) {
     y += lines.length * 40;
     if (s.textZh) {
       meas.font = `22px ${IMG_FONT}`;
-      const zhLines = wrapLines(meas, s.textZh, TEXT_W - 56);
+      const zhLines = wrapLines(meas, renderStepZh(r, s, persons), TEXT_W - 56);
       zhLines.forEach((line, li) => {
         ops.push({ t: 'text', x: PAD + 56, y: y + li * 30, text: line, font: meas.font, color: '#8a837b' });
       });
@@ -910,7 +931,7 @@ function renderAdd() {
   const stepRows = d.steps.map((s, i) => {
     const preview = renderStepId(d, s, 2);
     return `<div class="draft-step">
-      <div class="body">${i + 1}. ${s.emoji} ${escapeHtml(preview)}<div class="step-zh">${escapeHtml(s.textZh)}</div></div>
+      <div class="body">${i + 1}. ${s.emoji} ${escapeHtml(preview)}<div class="step-zh">${escapeHtml(renderStepZh(d, s, 2))}</div></div>
       <button class="del" data-step-del="${i}">✕</button>
     </div>`;
   }).join('');
@@ -1266,6 +1287,9 @@ async function syncPull() {
         updatedAt: remote.updatedAt,
       });
       state.sync = { family };
+      const mig = migrateCustoms(state.inventory, state.customIngs); // 老数据里的自定义食材升级成预设
+      state.inventory = mig.inv;
+      state.customIngs = mig.customs;
       save(true);
       render();
     }
