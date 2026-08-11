@@ -70,6 +70,8 @@ const INGREDIENT_PRESETS = [
   { key: 'sweet_potato_leaves', emoji: '🍃', nameZh: '番薯叶', nameId: 'daun ubi', unitId: 'ikat', unitZh: '把' },
   { key: 'celery',      emoji: '🌿', nameZh: '芹菜',   nameId: 'seledri',        unitId: 'batang',  unitZh: '根' },
   { key: 'baby_napa',   emoji: '🥬', nameZh: '娃娃菜', nameId: 'sawi putih mini', unitId: 'buah',   unitZh: '棵' },
+  { key: 'zucchini',    emoji: '🥒', nameZh: '西葫芦', nameId: 'zukini',         unitId: 'buah',    unitZh: '个' },
+  { key: 'dried_shrimp',emoji: '🦐', nameZh: '虾米',   nameId: 'ebi',            unitId: 'genggam', unitZh: '把' },
 ];
 
 /* ---------- 常备调料（不用录入库存，卡片上提示） ---------- */
@@ -2210,6 +2212,56 @@ const RECIPES = [
     ],
     tipId: 'Kangkung harus api besar supaya tidak menghitam.',
     tipZh: '空心菜大火快炒才不会发黑。',
+  },
+  {
+    id: 'zucchini-egg',
+    nameZh: '西葫芦炒蛋',
+    nameId: 'Telur Orak-arik Zukini',
+    emoji: '🥒',
+    category: 'egg',
+    timeMin: 15,
+    difficulty: 1,
+    ingredients: [
+      { key: 'zucchini', qty: 1 },
+      { key: 'egg',      qty: 3 },
+      { key: 'garlic',   qty: 2 },
+    ],
+    steps: [
+      { emoji: '🔪', textId: 'Cuci {zucchini}. Belah dua memanjang, lalu potong setengah lingkaran tipis.', textZh: '{zucchini}洗净，竖着对半切开，再切成半圆薄片。' },
+      { emoji: '🥚', textId: 'Pecahkan {egg} ke dalam mangkuk. Tambah sedikit garam. Kocok dengan garpu selama 30 detik.', textZh: '{egg}打入碗里，加一点盐，用叉子搅30秒。' },
+      { emoji: '🔥', textId: 'Panaskan wajan. Tuang 2 sendok makan minyak. Masukkan telur. Aduk sampai matang. Angkat ke piring.', textZh: '烧热锅倒2饭勺油，下蛋液炒熟，盛出。' },
+      { emoji: '🧄', textId: 'Geprek {garlic}. Tuang 1 sendok makan minyak. Masukkan bawang putih. Aduk 30 detik.', textZh: '{garlic}拍碎。倒1饭勺油，下蒜炒30秒。' },
+      { emoji: '🥒', textId: 'Masukkan zukini. Aduk 2 menit dengan api besar.', textZh: '下西葫芦，大火炒2分钟。' },
+      { emoji: '🍳', textId: 'Masukkan telur kembali. Tambah setengah sendok teh garam. Aduk 1 menit.', textZh: '倒回鸡蛋，加半茶勺盐，翻炒1分钟。' },
+      { emoji: '🍽️', textId: 'Matikan api. Angkat. Sajikan.', textZh: '关火出锅上桌。' },
+    ],
+    tipId: 'Zukini cepat matang, jangan terlalu lama supaya tidak lembek dan berair.',
+    tipZh: '西葫芦容易熟，炒久了出水变软。',
+  },
+  {
+    id: 'zucchini-dried-shrimp',
+    nameZh: '西葫芦炒虾米',
+    nameId: 'Zukini Tumis Ebi',
+    emoji: '🦐',
+    category: 'shrimp',
+    timeMin: 15,
+    difficulty: 1,
+    ingredients: [
+      { key: 'zucchini',     qty: 1 },
+      { key: 'dried_shrimp', qty: 1 },
+      { key: 'garlic',       qty: 2 },
+    ],
+    steps: [
+      { emoji: '🦐', textId: 'Rendam {dried_shrimp} di semangkuk air panas selama 5 menit. Tiriskan.', textZh: '{dried_shrimp}用热水泡5分钟，捞出沥干。' },
+      { emoji: '🔪', textId: 'Cuci {zucchini}. Belah dua memanjang, lalu potong setengah lingkaran tipis.', textZh: '{zucchini}洗净，竖着对半切开，再切成半圆薄片。' },
+      { emoji: '🧄', textId: 'Geprek {garlic}, lalu potong kecil-kecil.', textZh: '{garlic}拍碎切末。' },
+      { emoji: '🔥', textId: 'Panaskan wajan. Tuang 2 sendok makan minyak. Masukkan bawang putih dan ebi. Aduk 30 detik sampai wangi.', textZh: '烧热锅倒2饭勺油，下蒜末和虾米，炒30秒至香。' },
+      { emoji: '🥒', textId: 'Masukkan zukini. Aduk 2 menit dengan api besar.', textZh: '下西葫芦，大火炒2分钟。' },
+      { emoji: '🧂', textId: 'Tambah 1 sendok makan kecap asin. Aduk 1 menit sampai zukini sedikit lembek.', textZh: '加1饭勺生抽，翻炒1分钟至西葫芦稍软。' },
+      { emoji: '🍽️', textId: 'Matikan api. Angkat. Sajikan.', textZh: '关火出锅上桌。' },
+    ],
+    tipId: 'Ebi sudah asin, jadi tidak perlu tambah garam.',
+    tipZh: '虾米本身咸，不用再加盐。',
   },
 ];
 
