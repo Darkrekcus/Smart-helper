@@ -768,10 +768,10 @@ async function shareRecipeImage(r, persons) {
 let libQuery = '';
 let libIngKey = 'all';
 
-function renderLibrary() {
+function filterLibrary() {
   const q = libQuery.trim().toLowerCase();
 
-  const matched = allRecipes().filter(r => {
+  return allRecipes().filter(r => {
     if (libIngKey !== 'all' && !r.ingredients.some(i => i.key === libIngKey)) return false;
     if (!q) return true;
     if (r.nameZh.toLowerCase().includes(q) || r.nameId.toLowerCase().includes(q)) return true;
@@ -783,8 +783,10 @@ function renderLibrary() {
       return zh.toLowerCase().includes(q) || id.toLowerCase().includes(q);
     });
   });
+}
 
-  const cards = matched.map(r => {
+function libraryCards(matched) {
+  return matched.map(r => {
     const ings = r.ingredients.map(i => {
       const p = presetOf(i.key);
       return (p ? p.emoji : '📦') + (p ? p.nameZh : i.key);
@@ -799,6 +801,32 @@ function renderLibrary() {
       </div>
     </div>`;
   }).join('');
+}
+
+/* 只刷新结果列表：输入框不动，中文输入法的拼音组合不会被打断 */
+function updateLibraryResults() {
+  const res = document.getElementById('libResults');
+  const cnt = document.getElementById('libCount');
+  if (!res || !cnt) return;
+  const matched = filterLibrary();
+  cnt.textContent = `共 ${matched.length} 道`;
+  res.innerHTML = libraryCards(matched) ||
+    `<div class="empty-tip">库里没有找到相关菜谱 😅<br><br><button class="btn" id="goAddBtn">➕ 去「加菜」自己加一道</button></div>`;
+  const goAdd = document.getElementById('goAddBtn');
+  if (goAdd) {
+    goAdd.addEventListener('click', () => {
+      currentTab = 'add';
+      document.querySelectorAll('.tab').forEach(b => b.classList.toggle('active', b.dataset.tab === 'add'));
+      render();
+    });
+  }
+  res.querySelectorAll('.dish-card[data-id]').forEach(el => {
+    el.addEventListener('click', () => openRecipe(el.dataset.id));
+  });
+}
+
+function renderLibrary() {
+  const matched = filterLibrary();
 
   view.innerHTML = `
     <div class="card">
@@ -812,21 +840,18 @@ function renderLibrary() {
         </select>
       </div>
     </div>
-    <div class="section-title">共 ${matched.length} 道</div>
-    ${cards || `<div class="empty-tip">库里没有找到相关菜谱 😅<br><br><button class="btn" id="goAddBtn">➕ 去「加菜」自己加一道</button></div>`}
+    <div class="section-title" id="libCount">共 ${matched.length} 道</div>
+    <div id="libResults">${libraryCards(matched) ||
+      `<div class="empty-tip">库里没有找到相关菜谱 😅<br><br><button class="btn" id="goAddBtn">➕ 去「加菜」自己加一道</button></div>`}</div>
   `;
 
   document.getElementById('libSearch').addEventListener('input', e => {
     libQuery = e.target.value;
-    renderLibrary();
-    // 重渲染后保持光标在输入框末尾
-    const inp = document.getElementById('libSearch');
-    inp.focus();
-    inp.setSelectionRange(inp.value.length, inp.value.length);
+    updateLibraryResults(); // 只更新结果区，不重绘输入框
   });
   document.getElementById('libIng').addEventListener('change', e => {
     libIngKey = e.target.value;
-    renderLibrary();
+    updateLibraryResults();
   });
   const goAdd = document.getElementById('goAddBtn');
   if (goAdd) {
