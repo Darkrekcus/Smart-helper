@@ -1301,14 +1301,16 @@ async function syncPull() {
         return;
       }
       const family = state.sync.family;
+      /* 与 Smart Mummy（宝宝辅食版）共用密码时：宝宝 App 推送不含 persons/plan/
+         customRecipes/customIngs/diet 等大人字段，远端缺这些字段时保留本地值，避免互相清空 */
       Object.assign(state, {
         inventory: Array.isArray(remote.inventory) ? remote.inventory : [],
         history: Array.isArray(remote.history) ? remote.history : [],
-        persons: remote.persons >= 1 ? remote.persons : 2,
-        plan: remote.plan || null,
-        customRecipes: Array.isArray(remote.customRecipes) ? remote.customRecipes : [],
-        customIngs: Array.isArray(remote.customIngs) ? remote.customIngs : [],
-        diet: remote.diet || { chicken: true, pork: true, beef: true },
+        persons: remote.persons >= 1 ? remote.persons : (state.persons >= 1 ? state.persons : 2),
+        plan: remote.plan || state.plan || null,
+        customRecipes: Array.isArray(remote.customRecipes) ? remote.customRecipes : (state.customRecipes || []),
+        customIngs: Array.isArray(remote.customIngs) ? remote.customIngs : (state.customIngs || []),
+        diet: remote.diet || state.diet || { chicken: true, pork: true, beef: true },
         updatedAt: remote.updatedAt,
       });
       state.sync = { family };
